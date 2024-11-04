@@ -92,6 +92,7 @@ bool FtpCore::Connect(const std::string &remote_url, int port,
         fprintf(stderr, "[error] set url, port, username, password failed!\n");
         return false;
     }
+    curl_tools.SetOpt(CURLOPT_TIMEOUT, 6); // 设置超时时间 6s
     CURLcode res = curl_tools.Perform(); // 执行登录操作
     if (CURLE_OK != res)
     {
