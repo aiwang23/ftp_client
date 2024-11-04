@@ -21,7 +21,7 @@ find_package(Qt6 COMPONENTS
         REQUIRED)
 # 源文件 头文件 UI文件
 set(GUI_SRC_LIST main.cpp
-    ftpwidget.h ftpwidgetcpp ftpwidget.ui
+    ftpwidget.h ftpwidget.cpp ftpwidget.ui
 )
 
 add_executable(gui ${GUI_SRC_LIST})
