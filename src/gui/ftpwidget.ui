@@ -32,6 +32,11 @@
         <widget class="QComboBox" name="comboBox_connect">
          <item>
           <property name="text">
+           <string>sftp</string>
+          </property>
+         </item>
+         <item>
+          <property name="text">
            <string>ftp</string>
           </property>
          </item>
@@ -40,15 +45,14 @@
            <string>ftps</string>
           </property>
          </item>
-         <item>
-          <property name="text">
-           <string>sftp</string>
-          </property>
-         </item>
         </widget>
        </item>
        <item row="2" column="2">
-        <widget class="QLineEdit" name="lineEdit_user"/>
+        <widget class="QLineEdit" name="lineEdit_user">
+         <property name="text">
+          <string>wang</string>
+         </property>
+        </widget>
        </item>
        <item row="3" column="3" colspan="2">
         <widget class="QPushButton" name="pushButton_start">
@@ -98,7 +102,11 @@
         </widget>
        </item>
        <item row="1" column="4">
-        <widget class="QLineEdit" name="lineEdit_port"/>
+        <widget class="QLineEdit" name="lineEdit_port">
+         <property name="text">
+          <string>9022</string>
+         </property>
+        </widget>
        </item>
        <item row="3" column="1">
         <widget class="QLabel" name="label_5">
@@ -109,13 +117,20 @@
        </item>
        <item row="2" column="4">
         <widget class="QLineEdit" name="lineEdit_passwd">
+         <property name="text">
+          <string>123456</string>
+         </property>
          <property name="echoMode">
           <enum>QLineEdit::PasswordEchoOnEdit</enum>
          </property>
         </widget>
        </item>
        <item row="1" column="2">
-        <widget class="QLineEdit" name="lineEdit_ip"/>
+        <widget class="QLineEdit" name="lineEdit_ip">
+         <property name="text">
+          <string>172.22.254.93</string>
+         </property>
+        </widget>
        </item>
        <item row="1" column="3">
         <widget class="QLabel" name="label_2">
@@ -185,6 +200,9 @@
          <layout class="QGridLayout" name="gridLayout_3">
           <item row="0" column="0">
            <widget class="QLabel" name="label_loading">
+            <property name="styleSheet">
+             <string notr="true"/>
+            </property>
             <property name="text">
              <string>Loading...</string>
             </property>
@@ -338,6 +356,8 @@
    </item>
   </layout>
  </widget>
- <resources/>
+ <resources>
+  <include location="img.qrc"/>
+ </resources>
  <connections/>
 </ui>

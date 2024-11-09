@@ -18,10 +18,17 @@ find_package(Qt6 COMPONENTS
         Core
         Gui
         Widgets
+        Svgwidgets
         REQUIRED)
-# 源文件 头文件 UI文件
+
+# qrc资源文件
+set(QRC_LIST img.qrc)
+qt_add_resources(${QRC_LIST})
+
+# 源文件 头文件 UI文件 资源文件
 set(GUI_SRC_LIST main.cpp
     ftpwidget.h ftpwidget.cpp ftpwidget.ui
+        ${QRC_LIST}
 )
 
 add_executable(gui ${GUI_SRC_LIST})
@@ -30,6 +37,7 @@ target_link_libraries(gui
         Qt::Core
         Qt::Gui
         Qt::Widgets
+        Qt::SvgWidgets
 
         core
         libcurl

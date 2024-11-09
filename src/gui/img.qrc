@@ -1,0 +1,12 @@
+<RCC>
+    <qresource prefix="/">
+        <file>img/audio_file.svg</file>
+        <file>img/file.svg</file>
+        <file>img/folder.svg</file>
+        <file>img/image_file.svg</file>
+        <file>img/loader.svg</file>
+        <file>img/loader-quarter.svg</file>
+        <file>img/loading.gif</file>
+        <file>img/video_file.svg</file>
+    </qresource>
+</RCC>
