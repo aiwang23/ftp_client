@@ -4,8 +4,22 @@
 目前支持上传、下载、删除、重命名、新建文件夹、文件列表
 后面会加gui，应该会用Qt6，而且会在debian12上试下
 
+### 2024/11/11
+使用了Qt6, 添加了GUI的上传和下载以及跳转功能
+
 ## 环境
 我这里是 win11 vc17 cmake3.27 clion2024.1 Qt6.4
+
+## 如何编译
+1. src\gui\CMakeLists.txt 把这里修改成自己的Qt6安装目录
+```cmake
+set(CMAKE_PREFIX_PATH "C:/Qt/6.4.3/msvc2019_64/lib/cmake")
+```
+
+2. 使用Clion打开 编译(Vs code或其他都可以)
+
+TODO
+
 
 ### curl版本信息
 > curl 8.9.0-DEV (x86_64-pc-win32) libcurl/8.9.0-DEV OpenSSL/1.1.1i zlib/1.3.1.1-motley WinIDN libssh2/1.11.1_DEV
