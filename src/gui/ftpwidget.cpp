@@ -17,6 +17,8 @@
 #include <QFileDialog>
 #include <filesystem>
 
+#include <QInputDialog>
+
 
 FtpWidget::FtpWidget(QWidget *parent) : QWidget(parent), ui(new Ui::FtpWidget)
 {
@@ -196,7 +198,7 @@ void FtpWidget::init_memu()
 	QAction *putAction = menu->addAction("上传");
 	QAction *getAction = menu->addAction("下载");
 	menu->addSeparator();
-	QAction *delAction = menu->addAction("删除");	// TODO
+	QAction *delAction = menu->addAction("删除");
 	QAction *renameAction = menu->addAction("重命名");
 	menu->addSeparator();
 	QAction *mkdirAction = menu->addAction("新建文件夹");
@@ -215,6 +217,9 @@ void FtpWidget::init_memu()
 	connect(refAction, &QAction::triggered, this, &FtpWidget::on_pushButton_refresh);
 	connect(putAction, &QAction::triggered, this, &FtpWidget::on_putAction);
 	connect(getAction, &QAction::triggered, this, &FtpWidget::on_getAction);
+	connect(delAction, &QAction::triggered, this, &FtpWidget::on_delAction);
+	connect(renameAction, &QAction::triggered, this, &FtpWidget::on_renameAction);
+	connect(mkdirAction, &QAction::triggered, this, &FtpWidget::on_mkdirAction);
 }
 
 void FtpWidget::on_pushButton_start()
@@ -378,7 +383,7 @@ void FtpWidget::on_getAction()
 	}
 
 	// 这是个文件夹
-	if (ui->tableWidget->item(row, 3)->text()[0] == 'd')
+	if (ui->tableWidget->item(row, 3)->text()[0] == 'd') // TODO
 	{
 		QMessageBox::warning(this, "请重新选择", "这是个文件夹，无法下载");
 		return;
@@ -413,6 +418,117 @@ void FtpWidget::on_getAction()
 		check_get_result_thread_ = std::thread(&FtpWidget::check_get_result_thread_func_, this);
 		check_get_result_thread_.detach();
 	}
+}
+
+void FtpWidget::on_delAction()
+{
+	int row = ui->tableWidget->currentRow();
+	if (row == -1)
+	{
+		QMessageBox::warning(this, "删除失败", "没有选择删除的文件");
+		return;
+	}
+
+	// 文件名称
+	QString name = ui->tableWidget->item(row, 0)->text();
+	// 假如这是个软链接
+	if (ui->tableWidget->item(row, 3)->text()[0] == 'l')
+	{
+		/*
+		 * bin -> usr/bin
+		 */
+		name = name.split("->")[0];
+		name = name.trimmed(); // 去除首尾空格
+	}
+
+	file_type file_t = file;
+	// 这是个文件夹
+	if (ui->tableWidget->item(row, 3)->text()[0] == 'd')
+		file_t = file_type::dir;
+
+	// 给一个反悔的机会
+	if (auto box = QMessageBox::warning(this,
+	                                    "提醒", QString{"您确认要删除 %0 ?"}.arg(name),
+	                                    QMessageBox::Yes | QMessageBox::No);
+		box == QMessageBox::No)
+		return;
+
+	// delete
+	std::string del_file = remote_path_ + "/" + name.toStdString();
+	auto curl_ret = ftp_core_->Delete(del_file, file_t);
+	if (curl_ret == CURLE_OK)
+		QMessageBox::information(this, "消息", QString{"删除 %0 成功"}.arg(name));
+	else
+		QMessageBox::warning(this, "提醒", QString{"删除 %0 失败"}.arg(name));
+
+	on_pushButton_refresh();
+}
+
+void FtpWidget::on_renameAction()
+{
+	int row = ui->tableWidget->currentRow();
+	if (row == -1)
+	{
+		QMessageBox::warning(this, "提醒", "没有选择删除文件");
+		return;
+	}
+
+	// 文件名称
+	QString name = ui->tableWidget->item(row, 0)->text();
+	// 假如这是个软链接
+	if (ui->tableWidget->item(row, 3)->text()[0] == 'l')
+	{
+		/*
+		 * bin -> usr/bin
+		 */
+		name = name.split("->")[0];
+		name = name.trimmed(); // 去除首尾空格
+	}
+
+	// 输入新的名称 弹窗
+	bool is_input_ok;
+	QString new_name = QInputDialog::getText(this,
+	                                         "请输入新名称", "新名称: ", QLineEdit::Normal, name, &is_input_ok);
+	if (is_input_ok == false)
+		return;
+
+	// 重命名
+	std::string old_file = remote_path_ + "/" + name.toStdString();
+	std::string new_file = remote_path_ + "/" + new_name.toStdString();
+	CURLcode curl_ret = ftp_core_->Rename(old_file, new_file);
+	if (curl_ret == CURLE_OK)
+		QMessageBox::information(this, "消息", QString{"重命名 %0 为 %1 成功"}.arg(name).arg(new_name));
+	else if (curl_ret == CURLE_REMOTE_FILE_EXISTS)
+		QMessageBox::warning(this, "提醒", QString{"重命名 %0 为 %1 失败，远程文件已存在"}.arg(name).arg(new_name));
+	else
+		QMessageBox::warning(this, "提醒", QString{"重命名 %0 为 %1 失败"}.arg(name).arg(new_name));
+
+	on_pushButton_refresh();
+}
+
+void FtpWidget::on_mkdirAction()
+{
+	bool is_input_ok;
+	QString folder_name = QInputDialog::getText(this, "创建文件夹", "文件夹名称: ", QLineEdit::Normal, "", &is_input_ok);
+	if (is_input_ok == false)
+		return;
+
+	std::string new_folder_path = remote_path_ + "/" + folder_name.toStdString();
+	CURLcode curl_ret = ftp_core_->Mkdir(new_folder_path);
+	if (curl_ret == CURLE_OK)
+		QMessageBox::information(this,
+		                         "消息",
+		                         QString{"创建文件夹 %0 成功"}.arg(folder_name));
+	else if (curl_ret == CURLE_REMOTE_FILE_EXISTS)
+		QMessageBox::warning(this,
+		                     "提醒",
+		                     QString{"创建文件夹 %0 失败，远程文件已存在"}.arg(folder_name));
+	else
+		QMessageBox::warning(this,
+		                     "提醒",
+		                     QString{"创建文件夹 %0 失败"}.arg(folder_name));
+
+	on_pushButton_refresh();
 }
 
 void FtpWidget::check_put_result_thread_func_()

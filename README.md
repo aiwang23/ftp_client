@@ -11,7 +11,7 @@
 我这里是 win11 vc17 cmake3.27 clion2024.1 Qt6.4
 
 ## 如何编译
-1. src\gui\CMakeLists.txt 把这里修改成自己的Qt6安装目录
+1. ***src\gui\CMakeLists.txt*** 把这里修改成自己的Qt6安装目录
 ```cmake
 set(CMAKE_PREFIX_PATH "C:/Qt/6.4.3/msvc2019_64/lib/cmake")
 ```

@@ -91,6 +91,12 @@ public:
 
 	void on_getAction();
 
+	void on_delAction();
+
+	void on_renameAction();
+
+	void on_mkdirAction();
+
 private:
 	Ui::FtpWidget *ui;
 	std::unique_ptr<FtpCore> ftp_core_;         // ftp ftps sftp 核心功能
@@ -106,7 +112,7 @@ private:
 	 */
 	std::vector<std::tuple<
 		std::string, std::string, std::future<CURLcode>
-	> > get_rets_;
+	> > put_rets_;
 	std::atomic<bool> is_putting_atomic_{false}; // 是否还有上传的任务
 	std::thread check_put_result_thread_;
 
