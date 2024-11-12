@@ -288,7 +288,7 @@
              <property name="title">
               <string>Detailed Info</string>
              </property>
-             <layout class="QVBoxLayout" name="verticalLayout">
+             <layout class="QVBoxLayout" name="verticalLayout" stretch="4,2,2,2,4">
               <item>
                <widget class="QLabel" name="label_file_image">
                 <property name="text">
@@ -316,6 +316,19 @@
                  <string>file_time: xx:xx:xx</string>
                 </property>
                </widget>
+              </item>
+              <item>
+               <spacer name="verticalSpacer_5">
+                <property name="orientation">
+                 <enum>Qt::Vertical</enum>
+                </property>
+                <property name="sizeHint" stdset="0">
+                 <size>
+                  <width>20</width>
+                  <height>40</height>
+                 </size>
+                </property>
+               </spacer>
               </item>
              </layout>
             </widget>

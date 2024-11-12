@@ -24,6 +24,7 @@ FtpWidget::FtpWidget(QWidget *parent) : QWidget(parent), ui(new Ui::FtpWidget)
 {
 	ui->setupUi(this);
 	ftp_core_ = std::make_unique<FtpCore>();
+	svg_renderer_ = new QSvgRenderer();
 
 	init_resource();          // 初始化资源
 	init_connect_sig_slots(); // 初始化信号与槽
@@ -37,8 +38,8 @@ FtpWidget::~FtpWidget()
 		delete p_interrupt_login_;
 	if (ui)
 		delete ui;
-	if (pixmap_)
-		delete pixmap_;
+	if (svg_renderer_)
+		delete svg_renderer_;
 }
 
 void FtpWidget::init_connect_sig_slots()
@@ -97,21 +98,26 @@ void FtpWidget::init_connect_sig_slots()
 		/* 下载完成后，会调用此函数来报告结果 */
 		QMessageBox::information(this, "下载结果", msg);
 	});
+
+	connect(ui->tableWidget, &QTableWidget::cellClicked, this,
+	        &FtpWidget::on_tableWidget_cellClicked); // 单击 更新右方详细消息窗口
 }
 
 void FtpWidget::init_resource()
 {
 	// 加载svg图像
 	QString strPath = ":/img/loader.svg";
-	QSvgRenderer *svg_renderer = new QSvgRenderer();
-	svg_renderer->load(strPath);
+	svg_renderer_->load(strPath);
 
-	pixmap_ = new QPixmap(ui->label_loading->size());
-	pixmap_->fill(Qt::transparent);
-	QPainter painter(pixmap_);
-	svg_renderer->render(&painter);
+	int s = min(ui->label_loading->size().width(),
+	            ui->label_loading->size().height());
+	QPixmap pixmap(s, s);
+	pixmap.fill(Qt::transparent);
 
-	ui->label_loading->setPixmap(*pixmap_);
+	QPainter painter(&pixmap);
+	svg_renderer_->render(&painter);
+
+	ui->label_loading->setPixmap(pixmap);
 	ui->label_loading->setAlignment(Qt::AlignHCenter);
 }
 
@@ -122,6 +128,9 @@ void FtpWidget::init_file_list()
 	// 设置列表表头
 	// ui->tableWidget->setHorizontalHeaderLabels({"权限", "链接数", "用户", "用户组", "大小", "日期", "文件名"});
 	ui->tableWidget->setHorizontalHeaderLabels({"名称", "大小", "修改日期", "权限", "用户", "用户组", "链接数"});
+
+	// 选中单个目标
+	ui->tableWidget->setSelectionMode(QAbstractItemView::SingleSelection);
 }
 
 void FtpWidget::file_list_clear()
@@ -220,6 +229,51 @@ void FtpWidget::init_memu()
 	connect(delAction, &QAction::triggered, this, &FtpWidget::on_delAction);
 	connect(renameAction, &QAction::triggered, this, &FtpWidget::on_renameAction);
 	connect(mkdirAction, &QAction::triggered, this, &FtpWidget::on_mkdirAction);
+}
+
+void FtpWidget::update_groupBox_info(const QString &name, const file_type file_t, const int byte, const QString &time)
+{
+	// 设置文件名称
+	ui->groupBox_info->setTitle(name);
+
+	QString imgPath;
+	switch (file_t)
+	{
+		case file_type::dir: // 文件夹
+			imgPath = ":/img/folder.svg";
+			break;
+		case file_type::link: // 软链接
+			imgPath = ":/img/link.svg";
+			break;
+		case file_type::file: // 文件
+			imgPath = ":/img/file.svg";
+			break;
+		default:
+			return;
+	}
+
+	// 加载svg
+	svg_renderer_->load(imgPath);
+	int s = min(ui->label_file_image->size().width(),
+	            ui->label_file_image->size().height());
+	QPixmap pixmap(s, s);
+	pixmap.fill(Qt::transparent);
+	// 绘制svg
+	QPainter painter(&pixmap);
+	svg_renderer_->render(&painter);
+	// 设置图片
+	ui->label_file_image->setPixmap(pixmap);
+	ui->label_file_image->setAlignment(Qt::AlignHCenter);
+
+	// 文件类型
+	const QString type_name = file_type2str(file_t).c_str();
+	ui->label_type->setText(QString("file_type: %0").arg(type_name));
+
+	// 文件大小
+	ui->label_size->setText(QString{"file_size: %0 byte"}.arg(byte));
+
+	// 文件最新修改时间
+	ui->label_time->setText(QString{"file_time: %0"}.arg(time));
 }
 
 void FtpWidget::on_pushButton_start()
@@ -529,6 +583,37 @@ void FtpWidget::on_mkdirAction()
 		                     QString{"创建文件夹 %0 失败"}.arg(folder_name));
 
 	on_pushButton_refresh();
+}
+
+void FtpWidget::on_tableWidget_cellClicked(int row, int col)
+{
+	/*
+	 * "名称", "大小", "修改日期", "权限", "用户", "用户组", "链接数"
+	 *  [0]    [1]    [2]        [3]    [4]    [5]      [6]
+	 */
+
+	// 判断是什么类型
+	file_type file_t = file_type::none;
+	if (QChar t = ui->tableWidget->item(row, 3)->text()[0];
+		t == 'd')
+		// 文件夹
+		file_t = file_type::dir;
+	else if (t == 'l')
+		// 软链接
+		file_t = file_type::link;
+	else
+		// 文件
+		file_t = file_type::file;
+
+	// 文件名
+	QString name = ui->tableWidget->item(row, 0)->text();
+	// 文件大小
+	int bytes = ui->tableWidget->item(row, 1)->text().toInt();
+	// 最新的修改时间
+	QString modfy_time = ui->tableWidget->item(row, 2)->text();
+
+	// 更新详细信息窗口
+	update_groupBox_info(name, file_t, bytes, modfy_time);
 }
 
 void FtpWidget::check_put_result_thread_func_()

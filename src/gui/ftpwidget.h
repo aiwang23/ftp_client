@@ -9,6 +9,7 @@
 #include "FtpCore.h"
 #include <memory>
 
+class QSvgRenderer;
 QT_BEGIN_NAMESPACE
 
 namespace Ui
@@ -54,7 +55,9 @@ private:
 	static std::string getParentDirectory(const std::string &path);
 
 	// 初始化右键菜单
-	void init_memu(); // TODO
+	void init_memu();
+
+	void update_groupBox_info(const QString &name, file_type file_t, int byte, const QString &time);
 
 signals:
 	// 连接成功时发送
@@ -85,23 +88,31 @@ public:
 	// 回退上级目录
 	void on_pushButton_cdup();
 
+	// 上传文件
 	void on_putAction();
 
+	// 双击跳转
 	void on_tableWidget_cellDoubleClicked(int row, int idx);
 
+	// 下载
 	void on_getAction();
 
+	// 删除
 	void on_delAction();
 
+	// 重命名
 	void on_renameAction();
 
+	// 新建文件夹
 	void on_mkdirAction();
+
+	// 单击更新详情窗口
+	void on_tableWidget_cellClicked(int row, int col);
 
 private:
 	Ui::FtpWidget *ui;
 	std::unique_ptr<FtpCore> ftp_core_;         // ftp ftps sftp 核心功能
 	bool *p_interrupt_login_ = new bool(false); // 在尝试登录时中断
-	QPixmap *pixmap_;                           // 加载图标
 
 	std::string remote_path_ = "/"; // 远程路径 默认在'/'
 
@@ -130,6 +141,8 @@ private:
 	std::thread check_get_result_thread_;
 
 	void check_get_result_thread_func_();
+
+	QSvgRenderer *svg_renderer_;
 };
 
 

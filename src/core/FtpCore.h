@@ -23,7 +23,9 @@ struct file_info
 	std::string name;        // 文件名
 };
 
-enum file_type { none = -1, file, dir };
+enum file_type { none = -1, file, dir, link};
+
+std::string file_type2str(file_type type);
 
 class FtpCore
 {

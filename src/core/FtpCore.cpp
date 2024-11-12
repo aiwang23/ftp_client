@@ -52,6 +52,21 @@ static std::vector<std::string> split(const std::string &str, const char c)
 	return elems;
 }
 
+std::string file_type2str(const file_type type)
+{
+	switch (type)
+	{
+		case file_type::dir:
+			return "dir";
+		case file_type::file:
+			return "file";
+		case file_type::link:
+			return "link";
+		default:
+			return {};
+	}
+}
+
 FtpCore::FtpCore()
 {
 	curl_global_init(CURL_GLOBAL_ALL); // 初始化全局的CURL库
