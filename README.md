@@ -16,10 +16,18 @@
 set(CMAKE_PREFIX_PATH "C:/Qt/6.4.3/msvc2019_64/lib/cmake")
 ```
 
-2. 使用Clion打开 编译(Vs code或其他都可以)
+2. 在项目的根目录，创建***build***文件夹，进入 ***build***
+```bash
+mkdir build
+cd build 
+```
 
-TODO
-
+3. 编译
+```bash
+cmake -G "Visual Studio 17 2022" ..
+cmake --build .
+```
+> 编译出来的**可执行文件**在 bin/
 
 ### curl版本信息
 > curl 8.9.0-DEV (x86_64-pc-win32) libcurl/8.9.0-DEV OpenSSL/1.1.1i zlib/1.3.1.1-motley WinIDN libssh2/1.11.1_DEV
