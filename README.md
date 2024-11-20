@@ -1,4 +1,4 @@
-# 基于 libcurl 的 ftp ftps sftp客户端 ---（名字还没想好）
+# 基于 libcurl 的 ftp ftps sftp客户端 -- FileMover
 
 ## 功能
 目前支持上传、下载、删除、重命名、新建文件夹、文件列表
