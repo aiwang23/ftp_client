@@ -8,6 +8,12 @@
         <file>img/loader.svg</file>
         <file>img/loader-quarter.svg</file>
         <file>img/loading.gif</file>
+        <file>img/next.svg</file>
         <file>img/video_file.svg</file>
+    </qresource>
+
+    <qresource prefix="/">
+        <file>qss/Ubuntu.qss</file>
+        <file>qss/ElegantDark.qss</file>
     </qresource>
 </RCC>

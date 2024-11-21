@@ -19,10 +19,11 @@ find_package(Qt6 COMPONENTS
         Gui
         Widgets
         Svgwidgets
+        Svg
         REQUIRED)
 
 # qrc资源文件
-set(QRC_LIST img.qrc)
+set(QRC_LIST res.qrc)
 qt_add_resources(${QRC_LIST})
 
 # 源文件 头文件 UI文件 资源文件
@@ -38,6 +39,7 @@ target_link_libraries(gui
         Qt::Gui
         Qt::Widgets
         Qt::SvgWidgets
+        Qt::Svg
 
         core
         libcurl

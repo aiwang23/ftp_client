@@ -18,6 +18,7 @@
 #include <filesystem>
 
 #include <QInputDialog>
+#include <QIcon>
 
 
 FtpWidget::FtpWidget(QWidget *parent) : QWidget(parent), ui(new Ui::FtpWidget)
@@ -25,6 +26,17 @@ FtpWidget::FtpWidget(QWidget *parent) : QWidget(parent), ui(new Ui::FtpWidget)
 	ui->setupUi(this);
 	ftp_core_ = std::make_unique<FtpCore>();
 	svg_renderer_ = new QSvgRenderer();
+
+	this->setWindowTitle(QString{"FileMover"});
+
+	// 设置窗口图标
+	svg_renderer_->load(QString{":/img/next.svg"});
+	QPixmap pixmap(100, 100);
+	pixmap.fill(Qt::transparent);
+	QPainter painter(&pixmap);
+	svg_renderer_->render(&painter);
+	QIcon icon(pixmap);
+	this->setWindowIcon(icon);
 
 	init_resource();          // 初始化资源
 	init_connect_sig_slots(); // 初始化信号与槽
@@ -131,6 +143,9 @@ void FtpWidget::init_file_list()
 
 	// 选中单个目标
 	ui->tableWidget->setSelectionMode(QAbstractItemView::SingleSelection);
+
+	// 名称列开始时 宽点
+	ui->tableWidget->setColumnWidth(0, 150);
 }
 
 void FtpWidget::file_list_clear()
@@ -145,7 +160,20 @@ void FtpWidget::file_list_add(std::vector<file_info> &file_list)
 	{
 		int new_row = ui->tableWidget->rowCount();
 		ui->tableWidget->insertRow(new_row);
-		file_list_item_add(new_row, 0, file_info.name);
+
+		file_type file_t;
+		if (char t = file_info.permissions[0];
+			t == 'd')
+			// 文件夹
+			file_t = file_type::dir;
+		else if (t == 'l')
+			// 软链接
+			file_t = file_type::link;
+		else
+			// 文件
+			file_t = file_type::file;
+
+		file_list_item_add(new_row, 0, file_info.name, file_t);
 		file_list_item_add(new_row, 1, file_info.size);
 		file_list_item_add(new_row, 2, file_info.modify_time);
 		file_list_item_add(new_row, 3, file_info.permissions);
@@ -155,13 +183,48 @@ void FtpWidget::file_list_add(std::vector<file_info> &file_list)
 	}
 }
 
-void FtpWidget::file_list_item_add(int row, int idx, const std::string &item)
+void FtpWidget::file_list_item_add(int row, int idx, const std::string &item, file_type type)
 {
 	ui->tableWidget->setItem(row, idx, new QTableWidgetItem(item.c_str()));
 	// Qt::ItemIsSelectable：项目可以被选中。
 	// Qt::ItemIsUserCheckable：项目可以被用户勾选或取消勾选。
 	// Qt::ItemIsEnabled：项目是可交互的。
 	ui->tableWidget->item(row, idx)->setFlags(Qt::ItemIsSelectable | Qt::ItemIsUserCheckable | Qt::ItemIsEnabled);
+
+	// ==none 不用设置图标
+	if (type == none)
+		return;
+
+	QString imgPath;
+	switch (type)
+	{
+		case file_type::dir: // 文件夹
+			imgPath = ":/img/folder.svg";
+			break;
+		case file_type::link: // 软链接
+			imgPath = ":/img/link.svg";
+			break;
+		case file_type::file: // 文件
+			imgPath = ":/img/file.svg";
+			break;
+		default:
+			return;
+	}
+
+	// 设置图标
+	QIcon item_icon;
+	svg_renderer_->load(imgPath);
+	int s = min(
+		ui->tableWidget->size().width(),
+		ui->tableWidget->size().height()
+	);
+	QPixmap pixmap(s, s);
+	pixmap.fill(Qt::transparent);
+	QPainter painter(&pixmap);
+	svg_renderer_->render(&painter);
+	item_icon.addPixmap(pixmap);
+
+	ui->tableWidget->item(row, idx)->setIcon(item_icon);
 }
 
 std::string FtpWidget::getParentDirectory(const std::string &path)

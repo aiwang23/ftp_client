@@ -45,7 +45,7 @@ private:
 	void file_list_add(std::vector<file_info> &file_list);
 
 	// 添加文件列表项
-	void file_list_item_add(int row, int idx, const std::string &item);
+	void file_list_item_add(int row, int idx, const std::string &item, file_type type = file_type::none);
 
 	/**
 	 * 获取path的上级目录
