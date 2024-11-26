@@ -32,6 +32,9 @@ private:
 	// 初始信号与槽
 	void init_connect_sig_slots();
 
+	// 初始化图标
+	void init_icon();
+
 	// 初始化资源文件
 	void init_resource();
 

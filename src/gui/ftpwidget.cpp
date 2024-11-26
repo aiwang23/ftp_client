@@ -29,19 +29,11 @@ FtpWidget::FtpWidget(QWidget *parent) : QWidget(parent), ui(new Ui::FtpWidget)
 
 	this->setWindowTitle(QString{"FileMover"});
 
-	// 设置窗口图标
-	svg_renderer_->load(QString{":/img/next.svg"});
-	QPixmap pixmap(100, 100);
-	pixmap.fill(Qt::transparent);
-	QPainter painter(&pixmap);
-	svg_renderer_->render(&painter);
-	QIcon icon(pixmap);
-	this->setWindowIcon(icon);
-
 	init_resource();          // 初始化资源
 	init_connect_sig_slots(); // 初始化信号与槽
 	init_file_list();         // 初始化文件列表
 	init_memu();              // 初始化右键菜单
+	init_icon();              // 初始化图标
 }
 
 FtpWidget::~FtpWidget()
@@ -115,6 +107,29 @@ void FtpWidget::init_connect_sig_slots()
 	        &FtpWidget::on_tableWidget_cellClicked); // 单击 更新右方详细消息窗口
 }
 
+void FtpWidget::init_icon()
+{
+	// 设置图标
+	auto m_func = [this](const QString &svg_path, const int w, const int h)
+	{
+		svg_renderer_->load(svg_path);
+		QPixmap pixmap(w, h);
+		pixmap.fill(Qt::transparent);
+		QPainter painter(&pixmap);
+		svg_renderer_->render(&painter);
+		return std::move(QIcon{pixmap});
+	};
+
+	// 设置窗口图标
+	this->setWindowIcon(m_func(":/img/next.svg", 100, 100));
+
+	// 设置 刷新按钮图标
+	ui->pushButton_refresh->setIcon(m_func(":/img/refresh.svg", 100, 100));
+
+	// 设置 返回上一级目录按钮图标
+	ui->pushButton_cdup->setIcon(m_func(":/img/up.svg", 100, 100));
+}
+
 void FtpWidget::init_resource()
 {
 	// 加载svg图像
@@ -156,8 +171,25 @@ void FtpWidget::file_list_clear()
 
 void FtpWidget::file_list_add(std::vector<file_info> &file_list)
 {
+	file_info current_directory; // .
+	file_info parent_directory;  // ..
+
 	for (auto &file_info: file_list)
 	{
+		// 过滤掉 "." ".."
+		if (file_info.name == std::string{"."} &&
+		    current_directory.name.empty())
+		{
+			current_directory = file_info;
+			continue;
+		}
+		else if (file_info.name == std::string{".."} &&
+		         parent_directory.name.empty())
+		{
+			parent_directory = file_info;
+			continue;
+		}
+
 		int new_row = ui->tableWidget->rowCount();
 		ui->tableWidget->insertRow(new_row);
 
@@ -180,6 +212,29 @@ void FtpWidget::file_list_add(std::vector<file_info> &file_list)
 		file_list_item_add(new_row, 4, file_info.user);
 		file_list_item_add(new_row, 5, file_info.group);
 		file_list_item_add(new_row, 6, file_info.link_number);
+	}
+
+	// 添加 "." ".."
+	if ((not current_directory.name.empty()) and
+	    (not parent_directory.name.empty()))
+	{
+		ui->tableWidget->insertRow(0);
+		file_list_item_add(0, 0, current_directory.name, file_type::dir);
+		file_list_item_add(0, 1, current_directory.size);
+		file_list_item_add(0, 2, current_directory.modify_time);
+		file_list_item_add(0, 3, current_directory.permissions);
+		file_list_item_add(0, 4, current_directory.user);
+		file_list_item_add(0, 5, current_directory.group);
+		file_list_item_add(0, 6, current_directory.link_number);
+
+		ui->tableWidget->insertRow(1);
+		file_list_item_add(1, 0, parent_directory.name, file_type::dir);
+		file_list_item_add(1, 1, parent_directory.size);
+		file_list_item_add(1, 2, parent_directory.modify_time);
+		file_list_item_add(1, 3, parent_directory.permissions);
+		file_list_item_add(1, 4, parent_directory.user);
+		file_list_item_add(1, 5, parent_directory.group);
+		file_list_item_add(1, 6, parent_directory.link_number);
 	}
 }
 
