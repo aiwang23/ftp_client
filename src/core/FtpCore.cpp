@@ -14,7 +14,7 @@ struct download_file_info
 
 typedef download_file_info up_download_file_info;
 
-static bool is_exist(std::vector<up_download_file_info> &_list, up_download_file_info info)
+static bool is_exist(std::vector<up_download_file_info> &_list, const up_download_file_info &info)
 {
 	for (auto &item: _list)
 	{
@@ -67,11 +67,13 @@ std::string file_type2str(const file_type type)
 	}
 }
 
-FtpCore::FtpCore()
+FtpCore::FtpCore(FtpCoreCallBack *ftp_core_call_back)
 {
 	curl_global_init(CURL_GLOBAL_ALL); // 初始化全局的CURL库
 	download_list_.resize(20);
 	upload_list_.resize(20);
+
+	ftp_core_call_back_ = ftp_core_call_back;
 }
 
 FtpCore::~FtpCore()
@@ -81,7 +83,7 @@ FtpCore::~FtpCore()
 
 bool FtpCore::Connect(const std::string &remote_url, int port,
                       const std::string &username, const std::string &password
-                      , bool is_only)
+                      , const bool is_only, const std::string &visit_path)
 {
 	// 参数校验
 	if (remote_url.empty() || port <= 0 || username.empty() || password.empty())
@@ -100,7 +102,7 @@ bool FtpCore::Connect(const std::string &remote_url, int port,
 
 	is_login_ = false;
 	CurlTools curl_tools; // 设置url, port, username, password
-	bool ret = curl_tools.SetUrl_Port_User_Passwd(remote_url,
+	bool ret = curl_tools.SetUrl_Port_User_Passwd(remote_url + visit_path,
 	                                              port, username, password);
 	if (!ret)
 	{
@@ -128,13 +130,27 @@ bool FtpCore::Connect(const std::string &remote_url, int port,
 	return true;
 }
 
-std::future<CURLcode> FtpCore::GetFile(const std::string &remote_file, std::string local_file)
+void FtpCore::GetFile(const std::string &remote_file, std::string local_file,
+                      std::shared_ptr<ftp_file_transfer_status> &download_status)
 {
+	const uint32_t id = ftp_file_transfer_id_.fetch_add(1, std::memory_order_relaxed);
 	// 为登录过
 	if (!is_login_)
 	{
-		fprintf(stderr, "[error] not login!\n");
-		return {};
+		fprintf(stderr, "");
+		std::string msg{"[error] not login!\n"};
+		fprintf(stderr, msg.c_str());
+		// ftp_result_queue_.enqueue();
+		if (nullptr != ftp_core_call_back_)
+			ftp_core_call_back_->ResultCallBack(ftp_result{
+				id,
+				remote_file,
+				local_file,
+				ftp_transfer_type::download,
+				msg,
+				CURLE_LOGIN_DENIED
+			});
+		return;
 	}
 
 	while (std::filesystem::exists(local_file)) // 本地有重复的文件
@@ -146,11 +162,13 @@ std::future<CURLcode> FtpCore::GetFile(const std::string &remote_file, std::stri
 			local_file += ".bak";
 	}
 
+	download_status = std::make_shared<ftp_file_transfer_status>();
+	download_status->id = id;
 	// 创建下载任务
-	return download_pool_.enqueue([=]()
+	download_pool_.enqueue([=]()
 	{
 		fprintf(stdout, "[info] download file: %s\n", remote_file.c_str());
-		return GetFileCallback(remote_file, local_file, 0);
+		GetFileCallback(remote_file, local_file, 0, download_status);
 	});
 }
 
@@ -227,13 +245,23 @@ std::vector<file_info> FtpCore::GetDirList(const std::string &remote_file)
 	return file_list;
 }
 
-std::future<CURLcode> FtpCore::PutFile(std::string remote_file,
-                                       const std::string &local_file)
+void FtpCore::PutFile(std::string remote_file,
+                      const std::string &local_file,
+                      std::shared_ptr<ftp_file_transfer_status> &upload_status)
 {
+	const uint32_t id = ftp_file_transfer_id_.fetch_add(1, std::memory_order_relaxed);
 	if (!is_login_)
 	{
-		fprintf(stderr, "[error] not login!\n");
-		return {};
+		std::string msg = "[error] not login!\n";
+		fprintf(stderr, msg.c_str());
+		ftp_core_call_back_->ResultCallBack(ftp_result{
+				id,
+				remote_file,
+				local_file,
+				ftp_transfer_type::upload,
+				msg,
+				CURLE_LOGIN_DENIED
+			});
 	}
 
 	auto myfunc = [&]()
@@ -253,10 +281,13 @@ std::future<CURLcode> FtpCore::PutFile(std::string remote_file,
 			remote_file += ".bak";
 	}
 
-	return upload_pool_.enqueue([=]()
+	upload_status = std::make_shared<ftp_file_transfer_status>();
+	upload_status->id = id;
+
+	upload_pool_.enqueue([=]()
 	{
 		fprintf(stdout, "[info] upload file: %s\n", remote_file.c_str());
-		return PutFileCallback(remote_file, local_file, 0);
+		PutFileCallback(remote_file, local_file, 0, upload_status);
 	});
 }
 
@@ -417,13 +448,16 @@ size_t FtpCore::WriteCallback(void *ptr, size_t size, size_t nmemb, void *userda
 	return fwrite(ptr, size, nmemb, static_cast<FILE *>(userdata));
 }
 
-CURLcode FtpCore::GetFileCallback(std::string remote_file, std::string local_file, long timeout)
+void FtpCore::GetFileCallback(std::string remote_file, std::string local_file, long timeout,
+                              std::shared_ptr<ftp_file_transfer_status> download_status)
 {
 	FILE *f = nullptr;
 	curl_off_t local_file_len = -1;
 	CURLcode res = CURLE_GOT_NOTHING;
 	struct stat file_info{};
 	int use_resume = 0;
+	const uint32_t id = download_status->id;
+
 	// 如果本地有同名文件，则使用断点续传
 	if (stat(local_file.c_str(), &file_info) == 0)
 	{
@@ -433,10 +467,21 @@ CURLcode FtpCore::GetFileCallback(std::string remote_file, std::string local_fil
 	f = fopen(local_file.c_str(), "ab+"); // TODO
 	if (nullptr == f)
 	{
-		fprintf(stderr, "[error] open local file failed! local_file = %s\n",
-		        local_file.c_str());
-
-		return CURLE_WRITE_ERROR;
+		std::string msg{
+			"[error] open local file failed! "
+		};
+		fprintf(stderr, "%d %s, file: %s\n", __LINE__, msg.c_str(), local_file.c_str());
+		res = CURLE_WRITE_ERROR;
+		// ftp_result_queue_.enqueue();
+		ftp_core_call_back_->ResultCallBack(ftp_result{
+			id,
+			remote_file,
+			local_file,
+			ftp_transfer_type::download,
+			msg,
+			res
+		});
+		return;
 	}
 
 	int idx = -1;
@@ -456,12 +501,26 @@ CURLcode FtpCore::GetFileCallback(std::string remote_file, std::string local_fil
 	}
 
 	CurlTools curl_tools;
+	// 设置url，端口，用户名，密码
 	bool ret = curl_tools.SetUrl_Port_User_Passwd(remote_url_ + "/" + remote_file,
 	                                              port_, username_, password_);
 	if (!ret)
 	{
-		fprintf(stderr, "[error] set url, port, username, password failed!\n");
-		return CURLE_URL_MALFORMAT;
+		// 设置失败
+		std::string msg = {"[error] set url, port, username, password failed!\n"};
+		fprintf(stderr, "%d %s\n",__LINE__, msg.c_str());
+		res = CURLE_URL_MALFORMAT;
+		// 将结果放入队列
+		// ftp_result_queue_.enqueue();
+		ftp_core_call_back_->ResultCallBack(ftp_result{
+			id,
+			remote_file,
+			local_file,
+			ftp_transfer_type::download,
+			msg,
+			res
+		});
+		return;
 	}
 
 	curl_tools.SetOpt(CURLOPT_CONNECTTIMEOUT, timeout);
@@ -469,23 +528,42 @@ CURLcode FtpCore::GetFileCallback(std::string remote_file, std::string local_fil
 	curl_tools.SetOpt(CURLOPT_WRITEFUNCTION, WriteCallback);
 	curl_tools.SetOpt(CURLOPT_WRITEDATA, f);
 
-	curl_tools.SetOpt(CURLOPT_NOPROGRESS, 1L);
+	// 设置进度条
+	curl_tools.SetOpt(CURLOPT_NOPROGRESS, 0L);
+	curl_tools.SetOpt(CURLOPT_XFERINFOFUNCTION, ProgressCallback);
+	curl_tools.SetOpt(CURLOPT_XFERINFODATA, download_status.get());
 	curl_tools.SetOpt(CURLOPT_VERBOSE, 1L);
+
+	std::string curl_msg;
 	res = curl_tools.Perform();
 	if (CURLE_OK != res)
 	{
-		fprintf(stderr, "[error] curl perform failed! err:%s\n",
-		        curl_easy_strerror(res));
+		curl_msg = std::string{"[error] curl perform failed! err: "} +
+		           curl_easy_strerror(res);
+		fprintf(stderr, "%d %s\n", __LINE__, curl_msg.c_str());
 	}
 	else
 	{
-		fprintf(stdout, "[info] download %s OK\n", remote_file.c_str());
+		curl_msg = std::string{"[info] download OK"};
+		fprintf(stderr, "%d %s\n", __LINE__, curl_msg.c_str());
 		download_list_.at(idx).name = "";               // 下载完成，清空
 		download_list_.at(idx).is_transmitting = false; // 下载完成
 	}
 	if (f)
 		fclose(f);
-	return res;
+
+	// 将结果放入队列
+	// ftp_result_queue_.enqueue();
+
+	// 结果给qt
+	ftp_core_call_back_->ResultCallBack(ftp_result{
+		id,
+		remote_file,
+		local_file,
+		ftp_transfer_type::download,
+		curl_msg,
+		res
+	});
 }
 
 size_t FtpCore::ReadCallback(void *ptr, size_t size, size_t nmemb, void *userdata)
@@ -494,8 +572,10 @@ size_t FtpCore::ReadCallback(void *ptr, size_t size, size_t nmemb, void *userdat
 }
 
 
-CURLcode FtpCore::PutFileCallback(std::string remote_file, std::string local_file, long timeout)
+void FtpCore::PutFileCallback(std::string remote_file, std::string local_file, long timeout,
+	std::shared_ptr<ftp_file_transfer_status> upload_status)
 {
+	const uint32_t id = upload_status->id;
 	int idx = -1;
 	for (int i = 0; i < upload_list_.size(); ++i) // 登记到空位置里
 	{
@@ -534,19 +614,56 @@ CURLcode FtpCore::PutFileCallback(std::string remote_file, std::string local_fil
 	curl_tools.SetOpt(CURLOPT_UPLOAD, 1);
 	curl_tools.SetOpt(CURLOPT_INFILESIZE, sendFileSize);
 	curl_tools.SetOpt(CURLOPT_SSH_AUTH_TYPES, CURLSSH_AUTH_PASSWORD);
+
+	curl_tools.SetOpt(CURLOPT_NOPROGRESS, 0L);
+	curl_tools.SetOpt(CURLOPT_XFERINFOFUNCTION, ProgressCallback);
+	curl_tools.SetOpt(CURLOPT_XFERINFODATA, upload_status.get());
 	curl_tools.SetOpt(CURLOPT_VERBOSE, 1L);
+
+	std::string curl_msg;
 	res = curl_tools.Perform();
 	if (CURLE_OK != res)
 	{
-		fprintf(stderr, "[error] curl perform failed! err:%s\n",
-		        curl_easy_strerror(res));
+		curl_msg = std::string{"[error] curl perform failed! err: "} +
+				curl_easy_strerror(res);
+		fprintf(stderr, curl_msg.c_str());
 	}
 	else
 	{
-		fprintf(stdout, "[info] upload %s OK\n", remote_file.c_str());
+		curl_msg = std::string{"[info] upload OK\n"};
+		fprintf(stdout, curl_msg.c_str());
 		upload_list_.at(idx).name = "";               // 下载完成，清空
 		upload_list_.at(idx).is_transmitting = false; // 下载完成
 	}
 
-	return res;
+	if (sendFile)
+		fclose(sendFile);
+
+	ftp_core_call_back_->ResultCallBack(ftp_result{
+		id,
+		remote_file,
+		local_file,
+		ftp_transfer_type::upload,
+		curl_msg,
+		res
+	});
+}
+
+int FtpCore::ProgressCallback(void *clientp, curl_off_t dltotal, curl_off_t dlnow, curl_off_t ultotal, curl_off_t ulnow)
+{
+	double progress;
+	ftp_file_transfer_status *p_;
+	if (nullptr == clientp)
+		return 1;
+
+	p_ = static_cast<ftp_file_transfer_status *>(clientp);
+
+	// 如果停止了，则返回 1 表示停止下载
+	if (p_->is_stop)
+		return 1;
+
+	if (dltotal != 0)
+		p_->progress = static_cast<double>(dlnow) / static_cast<double>(dltotal) * 100.0;
+
+	return 0; // 返回 0 表示继续下载
 }

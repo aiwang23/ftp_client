@@ -5,6 +5,8 @@
 #include <curl/curl.h>
 
 #include "ThreadPool.h"
+#include "blockingconcurrentqueue.h"
+#include "FtpCoreCallBack.h"
 
 struct download_file_info;
 /**
@@ -23,14 +25,16 @@ struct file_info
 	std::string name;        // 文件名
 };
 
-enum file_type { none = -1, file, dir, link};
+enum class file_type { none = -1, file, dir, link };
 
 std::string file_type2str(file_type type);
 
 class FtpCore
 {
+
 public:
-	FtpCore();
+	FtpCore() = delete;
+	explicit FtpCore(FtpCoreCallBack * ftp_core_call_back);
 
 	~FtpCore();
 
@@ -42,10 +46,12 @@ public:
 	 * @param username 用户名
 	 * @param password 密码
 	 * @param is_only 如果是单次连接，不记录url port username password
+	 * @param visit_path 默认访问路径
 	 * @return ture表示登录成功 false表示登录失败
 	 */
 	bool Connect(const std::string &remote_url, int port,
-	             const std::string &username, const std::string &password, bool is_only = false);
+	             const std::string &username, const std::string &password,
+	             bool is_only = false, const std::string &visit_path = "");
 
 	/**
 	 * 无阻塞多线程 下载文件
@@ -53,10 +59,13 @@ public:
 	 * @param remote_file 远程文件路径
 	 * @note  远程文件路径格式为 /path/test.txt
 	 * @param local_file 本地文件路径
+	 * @param download_status 用来记录下载进度 停止下载
 	 * @note 本地文件路径格式为 /path/test.txt
-	 * @return 状态码
+	 *
+	 * 返回值 自动放入 ftp_core_call_back_->ResultCallBack()
 	 */
-	std::future<CURLcode> GetFile(const std::string &remote_file, std::string local_file);
+	void GetFile(const std::string &remote_file, std::string local_file,
+	             std::shared_ptr<ftp_file_transfer_status> &download_status);
 
 	/**
 	 * ! TODO
@@ -82,8 +91,9 @@ public:
 	 * @note 本地文件路径格式为 /path/test.txt
 	 * @return
 	 */
-	std::future<CURLcode> PutFile(std::string remote_file,
-	                              const std::string &local_file);
+	void PutFile(std::string remote_file,
+	                              const std::string &local_file,
+	                              std::shared_ptr<ftp_file_transfer_status> &upload_status);
 
 	/**
 	 * 删除文件 文件夹
@@ -130,15 +140,19 @@ protected:
 	static size_t WriteCallback(void *ptr, size_t size, size_t nmemb, void *userdata);
 
 	// @GetFile 的回调函数
-	CURLcode GetFileCallback(std::string remote_file, std::string local_file,
-	                         long timeout);
+	void GetFileCallback(std::string remote_file, std::string local_file,
+	                     long timeout, std::shared_ptr<ftp_file_transfer_status> download_progress);
 
 	// @PutFileCallback 的回调函数
 	static size_t ReadCallback(void *ptr, size_t size, size_t nmemb, void *userdata);
 
 	// @PutFile 的回调函数
-	CURLcode PutFileCallback(std::string remote_file, std::string local_file,
-	                         long timeout);
+	void PutFileCallback(std::string remote_file, std::string local_file,
+	                         long timeout, std::shared_ptr<ftp_file_transfer_status> upload_status);
+
+	// 进度回调函数
+	static int ProgressCallback(void *clientp, curl_off_t dltotal, curl_off_t dlnow, curl_off_t ultotal,
+	                            curl_off_t ulnow);
 
 private:
 	std::string remote_url_; // 远程url  格式为 ftp://ip 或 ftps://ip sftp://ip
@@ -152,6 +166,13 @@ private:
 
 	std::vector<download_file_info> download_list_; // 登记一下正在下载的文件是什么 防止下载后重名
 	std::vector<download_file_info> upload_list_;   // 登记一下正在上传的文件是什么 防止上传后重名
+
+	/**
+	 * 每一次上传or下载都有一个唯一的id
+	 * 此变量用于分配id
+	 */
+	std::atomic<uint32_t> ftp_file_transfer_id_{0};
+	FtpCoreCallBack * ftp_core_call_back_ = nullptr;
 };
 
 

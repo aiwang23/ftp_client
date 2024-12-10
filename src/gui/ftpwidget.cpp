@@ -24,7 +24,7 @@
 FtpWidget::FtpWidget(QWidget *parent) : QWidget(parent), ui(new Ui::FtpWidget)
 {
 	ui->setupUi(this);
-	ftp_core_ = std::make_unique<FtpCore>();
+	ftp_core_ = std::make_unique<FtpCore>(static_cast<FtpCoreCallBack *>(this));
 	svg_renderer_ = new QSvgRenderer();
 
 	this->setWindowTitle(QString{"FileMover"});
@@ -34,6 +34,8 @@ FtpWidget::FtpWidget(QWidget *parent) : QWidget(parent), ui(new Ui::FtpWidget)
 	init_file_list();         // 初始化文件列表
 	init_memu();              // 初始化右键菜单
 	init_icon();              // 初始化图标
+	init_qss();               // 某体个的 qss
+
 }
 
 FtpWidget::~FtpWidget()
@@ -46,6 +48,23 @@ FtpWidget::~FtpWidget()
 		delete svg_renderer_;
 }
 
+void FtpWidget::ResultCallBack(ftp_result rs)
+{
+	emit sig_result(rs);
+}
+
+void FtpWidget::DownloadProgressCallBack(ftp_file_transfer_status status)
+{
+	qDebug() << "ftp:mode: " << (status.transfer_t == ftp_transfer_type::download ? "download" : "upload");
+	qDebug() << "ftp progess: " << status.progress;
+}
+
+void FtpWidget::UploadProgressCallBack(ftp_file_transfer_status status)
+{
+	qDebug() << "ftp:mode: " << (status.transfer_t == ftp_transfer_type::download ? "download" : "upload");
+	qDebug() << "ftp progess: " << status.progress;
+}
+
 void FtpWidget::init_connect_sig_slots()
 {
 	connect(ui->pushButton_start, &QPushButton::clicked, this,
@@ -55,6 +74,7 @@ void FtpWidget::init_connect_sig_slots()
 
 	connect(this, &FtpWidget::sig_connect_OK, this, [this]()
 	{
+		remote_path_ = ui->lineEdit_visit->text().toStdString();
 		/* 登陆成功 跳转到工作界面 */
 		ui->stackedWidget->setCurrentIndex(2);
 		QMessageBox::information(nullptr, "登录成功", "登陆成功!!");
@@ -73,7 +93,8 @@ void FtpWidget::init_connect_sig_slots()
 	        &FtpWidget::on_pushButton_refresh); // 点击刷新按钮 刷新文件列表
 	connect(this, &FtpWidget::sig_connect_OK, this, [this]()
 	{
-		/* 登录成功 显示当前路径 显示远程主机 用户名 端口 */
+		/* 登录成功 更新显示路径 显示当前路径 显示远程主机 用户名 端口 */
+		remote_path_ = ui->lineEdit_visit->text().toStdString();
 		ui->lineEdit_url_working->setText(remote_path_.c_str());
 		std::string url = ftp_core_->remote_url();
 		std::string user = ftp_core_->username();
@@ -92,15 +113,17 @@ void FtpWidget::init_connect_sig_slots()
 	connect(ui->tableWidget, &QTableWidget::cellDoubleClicked, this,
 	        &FtpWidget::on_tableWidget_cellDoubleClicked); // 双击后跳转
 
-	connect(this, &FtpWidget::sig_put_result, this, [this](const QString &msg)
+	connect(this, &FtpWidget::sig_result, this, [this](const ftp_result &result)
 	{
-		/* 上传完成后，会调用此函数来报告结果 */
-		QMessageBox::information(this, "上传结果", msg);
-	});
-	connect(this, &FtpWidget::sig_get_result, this, [this](const QString &msg)
-	{
-		/* 下载完成后，会调用此函数来报告结果 */
-		QMessageBox::information(this, "下载结果", msg);
+		/* 下载 上传 完成后，会调用此函数来报告结果 */
+		QMessageBox::information(this,
+		                         QString{"%0结果"}
+		                         .arg(result.transfer_t == ftp_transfer_type::download ? "下载" : "上传"),
+		                         QString{"本地文件: %0\n远程文件: %1\n%2"}
+		                         .arg(result.local_file.c_str())
+		                         .arg(result.remote_file.c_str())
+		                         .arg(result.msg.c_str())
+		);
 	});
 
 	connect(ui->tableWidget, &QTableWidget::cellClicked, this,
@@ -128,6 +151,16 @@ void FtpWidget::init_icon()
 
 	// 设置 返回上一级目录按钮图标
 	ui->pushButton_cdup->setIcon(m_func(":/img/up.svg", 100, 100));
+
+	// 登录界面
+	QString strPath = ":/img/next.svg";
+	svg_renderer_->load(strPath);
+	QPixmap pixmap(ui->label_login_icon->size());
+	pixmap.fill(Qt::transparent);
+	QPainter painter(&pixmap);
+	svg_renderer_->render(&painter);
+	ui->label_login_icon->setPixmap(pixmap);
+	ui->label_login_icon->setAlignment(Qt::AlignCenter);
 }
 
 void FtpWidget::init_resource()
@@ -136,7 +169,7 @@ void FtpWidget::init_resource()
 	QString strPath = ":/img/loader.svg";
 	svg_renderer_->load(strPath);
 
-	int s = min(ui->label_loading->size().width(),
+	int s = max(ui->label_loading->size().width(),
 	            ui->label_loading->size().height());
 	QPixmap pixmap(s, s);
 	pixmap.fill(Qt::transparent);
@@ -146,6 +179,8 @@ void FtpWidget::init_resource()
 
 	ui->label_loading->setPixmap(pixmap);
 	ui->label_loading->setAlignment(Qt::AlignHCenter);
+	qDebug() << "lable: " << ui->label_loading->size();
+	qDebug() << "win ize: " << this->size();
 }
 
 void FtpWidget::init_file_list()
@@ -247,7 +282,7 @@ void FtpWidget::file_list_item_add(int row, int idx, const std::string &item, fi
 	ui->tableWidget->item(row, idx)->setFlags(Qt::ItemIsSelectable | Qt::ItemIsUserCheckable | Qt::ItemIsEnabled);
 
 	// ==none 不用设置图标
-	if (type == none)
+	if (type == file_type::none)
 		return;
 
 	QString imgPath;
@@ -394,13 +429,24 @@ void FtpWidget::update_groupBox_info(const QString &name, const file_type file_t
 	ui->label_time->setText(QString{"file_time: %0"}.arg(time));
 }
 
+void FtpWidget::init_qss()
+{
+	ui->widget_login_right->setStyleSheet(
+		"QWidget#widget_login_right{border-radius: 20px;"
+		"border: 1px solid #007BFF; "
+		"background-color: #F5F5F5; }"
+	);
+}
+
 void FtpWidget::on_pushButton_start()
 {
 	std::string ip = ui->lineEdit_ip->text().toStdString();
-	int port = ui->lineEdit_port->text().toInt();
+	const int port = ui->lineEdit_port->text().toInt();
 	std::string user = ui->lineEdit_user->text().toStdString();
 	std::string passwd = ui->lineEdit_passwd->text().toStdString();
 	std::string connect_type = ui->comboBox_connect->currentText().toStdString();
+	std::string path = ui->lineEdit_visit->text().toStdString();
+	path = path.empty() ? path : path + "/"; // 如果为空，则不添加/
 
 	// 换到等待界面
 	ui->stackedWidget->setCurrentIndex(1);
@@ -410,13 +456,15 @@ void FtpWidget::on_pushButton_start()
 	*p_interrupt_login_ = false;
 	auto f = [=]()
 	{
-		bool ret = ftp_core_->Connect(url, port, user, passwd);
+		bool ret = ftp_core_->Connect(url, port, user, passwd, false, path);
 		if (ret && !(*p_interrupt_login_))
+		{
 			// 跳转到工作界面
 			emit sig_connect_OK();
+		}
 		else
-			// 跳转回登录界面
-			emit sig_connect_failed();
+		// 跳转回登录界面
+		emit sig_connect_failed();
 	};
 	std::thread th(f);
 	th.detach();
@@ -472,17 +520,9 @@ void FtpWidget::on_putAction()
 	const std::filesystem::path path(files[0].toStdString());
 	std::string remote_file = remote_path_ + "/" + path.filename().string();
 	std::string loc_file = files[0].toStdString();
-	// 上传
-	std::future<CURLcode> ret = ftp_core_->PutFile(remote_file, loc_file);
-	put_rets_.emplace_back(remote_file, loc_file, std::move(ret));
-
-	// 假如没有启动 上传返回值检测线程 则启动线程
-	if (is_putting_atomic_.load() == false)
-	{
-		is_putting_atomic_.store(true);
-		check_put_result_thread_ = std::thread(&FtpWidget::check_put_result_thread_func_, this);
-		check_put_result_thread_.detach();
-	}
+	std::shared_ptr<ftp_file_transfer_status> upload_status;
+	ftp_core_->PutFile(remote_file, loc_file, upload_status);
+	// put_rets_.emplace_back(remote_file, loc_file, std::move(ret));
 }
 
 void FtpWidget::on_tableWidget_cellDoubleClicked(int row, int idx)
@@ -579,17 +619,9 @@ void FtpWidget::on_getAction()
 	// 下载
 	std::string remote_file = remote_path_ + "/" + name.toStdString();
 	std::string loc_file = files[0].toStdString();
-	std::future<CURLcode> ret = ftp_core_->GetFile(remote_file, loc_file);
 
-	get_rets_.emplace_back(remote_file, loc_file, std::move(ret));
-
-	// 假如没有启动 上传返回值检测线程 则启动线程
-	if (is_getting_atomic_.load() == false)
-	{
-		is_getting_atomic_.store(true);
-		check_get_result_thread_ = std::thread(&FtpWidget::check_get_result_thread_func_, this);
-		check_get_result_thread_.detach();
-	}
+	std::shared_ptr<ftp_file_transfer_status> download_status;
+	ftp_core_->GetFile(remote_file, loc_file, download_status);
 }
 
 void FtpWidget::on_delAction()
@@ -613,7 +645,7 @@ void FtpWidget::on_delAction()
 		name = name.trimmed(); // 去除首尾空格
 	}
 
-	file_type file_t = file;
+	file_type file_t = file_type::file;
 	// 这是个文件夹
 	if (ui->tableWidget->item(row, 3)->text()[0] == 'd')
 		file_t = file_type::dir;
@@ -732,98 +764,4 @@ void FtpWidget::on_tableWidget_cellClicked(int row, int col)
 
 	// 更新详细信息窗口
 	update_groupBox_info(name, file_t, bytes, modfy_time);
-}
-
-void FtpWidget::check_put_result_thread_func_()
-{
-	/**
-	 * put_rets_
-	 * 第1个 std::string 远程文件
-	 * 第2个 std::string 本地文件
-	 * 第3个 std::future<CURLcode> 上传完文件后的结果
-	 */
-
-	int i = 0;
-	while (!put_rets_.empty())
-	{
-		if (put_rets_.size() > i)
-		{
-			// 假如已经上传完毕 即可查看结果
-			// std::future<CURLcode>
-			if (std::get<2>(put_rets_[i]).wait_for(std::chrono::milliseconds(100)) ==
-			    std::future_status::ready)
-			{
-				// 远程文件
-				QString remote_file = std::get<0>(put_rets_[i]).c_str();
-				// 本地文件
-				QString loc_file = std::get<1>(put_rets_[i]).c_str();
-				// 上传的结果
-
-				std::string msg{
-					std::get<2>(put_rets_[i]).get() == CURLE_OK
-						? "上传成功"
-						: "上传失败"
-				};
-				QString curl_msg;
-				curl_msg += "远程文件: " + remote_file + "\n本地文件: " + loc_file + "\n" + msg.c_str();
-
-				emit sig_put_result(curl_msg);
-
-				put_rets_.erase(put_rets_.begin() + i);
-				continue;
-			}
-			else
-				++i;
-		}
-		else
-			i = 0;
-	}
-
-	is_putting_atomic_.store(false);
-}
-
-void FtpWidget::check_get_result_thread_func_()
-{
-	/**
-	 * get_rets_
-	 * 第1个 std::string 远程文件
-	 * 第2个 std::string 本地文件
-	 * 第3个 std::future<CURLcode> 下载完文件后的结果
-	 */
-
-	int i = 0;
-	while (!get_rets_.empty())
-	{
-		if (get_rets_.size() > i)
-		{
-			// 假如已经下载完毕 即可查看结果
-			// std::future<CURLcode>
-			if (std::get<2>(get_rets_[i]).wait_for(std::chrono::milliseconds(100)) ==
-			    std::future_status::ready)
-			{
-				// 远程文件
-				QString remote_file = std::get<0>(get_rets_[i]).c_str();
-				// 本地文件
-				QString loc_file = std::get<1>(get_rets_[i]).c_str();
-				// 上传的结果
-				std::string msg{
-					std::get<2>(get_rets_[i]).get() == CURLE_OK
-						? "下载成功"
-						: "下载失败"
-				};
-				QString curl_msg;
-				curl_msg += "远程文件: " + remote_file + "\n本地文件: " + loc_file + "\n" + msg.c_str();
-
-				emit sig_get_result(curl_msg);
-				get_rets_.erase(get_rets_.begin() + i);
-				continue;
-			}
-			else
-				++i;
-		}
-		else
-			i = 0;
-	}
-
-	is_getting_atomic_.store(false);
 }

@@ -8,6 +8,7 @@
 #include <QWidget>
 #include "FtpCore.h"
 #include <memory>
+#include "FtpCoreCallBack.h"
 
 class QSvgRenderer;
 QT_BEGIN_NAMESPACE
@@ -19,7 +20,7 @@ namespace Ui
 
 QT_END_NAMESPACE
 
-class FtpWidget : public QWidget
+class FtpWidget final : public QWidget, FtpCoreCallBack
 {
 	Q_OBJECT
 
@@ -27,6 +28,12 @@ public:
 	explicit FtpWidget(QWidget *parent = nullptr);
 
 	~FtpWidget() override;
+
+	void ResultCallBack(ftp_result rs) override;
+
+	void DownloadProgressCallBack(ftp_file_transfer_status status) override;
+
+	void UploadProgressCallBack(ftp_file_transfer_status status) override;
 
 private:
 	// 初始信号与槽
@@ -62,6 +69,9 @@ private:
 
 	void update_groupBox_info(const QString &name, file_type file_t, int byte, const QString &time);
 
+	// 设置某一个控件的qss
+	void init_qss();
+
 signals:
 	// 连接成功时发送
 	void sig_connect_OK();
@@ -69,11 +79,7 @@ signals:
 	// 连接失败时发送
 	void sig_connect_failed();
 
-	// 上传完成后要发送这个
-	void sig_put_result(QString msg);
-
-	// 下载完成后要发送这个
-	void sig_get_result(QString msg);
+	void sig_result(ftp_result rs);
 
 public:
 	// 点击开始登录按钮
@@ -119,33 +125,7 @@ private:
 
 	std::string remote_path_ = "/"; // 远程路径 默认在'/'
 
-	/**
-	 * 第1个 std::string 远程文件
-	 * 第2个 std::string 本地文件
-	 * 第3个 std::future<CURLcode> 上传完文件后的结果
-	 */
-	std::vector<std::tuple<
-		std::string, std::string, std::future<CURLcode>
-	> > put_rets_;
-	std::atomic<bool> is_putting_atomic_{false}; // 是否还有上传的任务
-	std::thread check_put_result_thread_;
-
-	void check_put_result_thread_func_();
-
-	/**
-	 * 第1个 std::string 远程文件
-	 * 第2个 std::string 本地文件
-	 * 第3个 std::future<CURLcode> 下载完文件后的结果
-	 */
-	std::vector<std::tuple<
-		std::string, std::string, std::future<CURLcode>
-	> > get_rets_;
-	std::atomic<bool> is_getting_atomic_{false}; // 是否还有下载的任务
-	std::thread check_get_result_thread_;
-
-	void check_get_result_thread_func_();
-
-	QSvgRenderer *svg_renderer_;
+	QSvgRenderer *svg_renderer_;	 // svg 渲染器
 };
 
 
